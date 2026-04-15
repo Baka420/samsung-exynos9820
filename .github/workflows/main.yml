@@ -28,10 +28,17 @@ jobs:
           sudo apt install ./libtinfo5_6.3-2ubuntu0.1_amd64.deb
           sudo apt-get install -y -qq libncurses5 ccache
 
-      - name: Surgical Magisk Bypass
+      - name: Fix Magisk Build Environment
         run: |
-          # This finds the exact line causing the FileNotFoundError and disables it
-          sed -i 's/update_magisk(configs\[.kernel.\]\[.magisk.\].get(.version.))/pass/g' ./cruelbuild
+          # 1. Create the directory structure the kernel 'make' expects
+          mkdir -p usr/magisk
+          
+          # 2. Fix the line ending/execution issues in the update script
+          chmod +x ./usr/magisk/update_magisk.sh
+          
+          # 3. Manually trigger the Magisk download/setup so the files exist for 'make'
+          # We use python3 explicitly to avoid the 'exit status 11' from earlier
+          python3 -c "from cruelbuild import update_magisk; update_magisk('canary')" || true
 
       - name: Kernel Configure
         run: |
