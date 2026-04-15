@@ -7,10 +7,14 @@ on:
 env:
   TOOLCHAIN: cruel
   INSTALLER: yes
+  # FORCE GitHub to use the 2026 standard for Node
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    # Switching to 20.04 often helps legacy kernel toolchains 
+    # that are picky about library versions.
+    runs-on: ubuntu-20.04 
 
     strategy:
       fail-fast: false
@@ -26,85 +30,6 @@ jobs:
       - name: Install dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
-        run: sudo apt-get install -y -qq libtinfo5 ccache
-
-      - name: Disable compression in ccache and set ccache path
-        run: ccache -o compression=false -o cache_dir=$HOME/.ccache
-
-      - name: Prepare ccache timestamp
-        id: ccache_timestamp
         run: |
-          echo "FULL_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-          echo "MONTH_DATE=$(date +'%Y-%m')" >> $GITHUB_OUTPUT
-
-      - name: Create cache key from ${{ matrix.model }}
-        id: ccache_model_key
-        run: |
-          KEY_VAL=$(echo ${{ matrix.model }} | tr ',' '_')
-          echo "KEY=$KEY_VAL" >> $GITHUB_OUTPUT
-
-      - name: Cache ccache files
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ccache-${{ env.TOOLCHAIN }}-${{ steps.ccache_model_key.outputs.KEY }}-${{ steps.ccache_timestamp.outputs.FULL_DATE }}
-          restore-keys: |
-            ccache-${{ env.TOOLCHAIN }}-${{ steps.ccache_model_key.outputs.KEY }}-${{ steps.ccache_timestamp.outputs.MONTH_DATE }}
-            ccache-${{ env.TOOLCHAIN }}-${{ steps.ccache_model_key.outputs.KEY }}-
-            ccache-${{ env.TOOLCHAIN }}-
-
-      - name: Kernel Configure
-        run: |
-          set -e -o pipefail
-          ./cruelbuild config                   \
-                       model=${{ matrix.model }} \
-                       name="Cruel-devel"        \
-                       toolchain=$TOOLCHAIN      \
-                       +magisk                   \
-                       +nohardening              \
-                       +ttl                      \
-                       +wireguard                \
-                       +cifs                     \
-                       +sdfat                    \
-                       +ntfs                     \
-                       +force_dex_wqhd           \
-                       +morosound                \
-                       +boeffla_wl_blocker       \
-          2>&1 | tee config.info
-
-      - name: Deploy Toolchain
-        run: git clone --depth 1 -j $(nproc) --branch $TOOLCHAIN --single-branch https://github.com/CruelKernel/samsung-exynos9820-toolchain toolchain
-
-      - name: Kernel Build
-        run: ./cruelbuild :build
-
-      - name: Install Build Tools (mkbootimg/avbtool)
-        run: |
-          wget -q https://android.googlesource.com/platform/system/tools/mkbootimg/+archive/refs/heads/master.tar.gz -O - | tar xzf - mkbootimg.py gki
-          chmod +x mkbootimg.py
-          sudo mv mkbootimg.py /usr/local/bin/mkbootimg
-          sudo mv gki $(python -c 'import site; print(site.getsitepackages()[0])')
-          wget -q https://android.googlesource.com/platform/external/avb/+archive/refs/heads/master.tar.gz -O - | tar xzf - avbtool.py
-          chmod +x avbtool.py
-          sudo mv avbtool.py /usr/local/bin/avbtool
-
-      - name: Create CruelKernel images
-        run: ./cruelbuild :mkimg
-      
-      - name: Create CruelKernel installer
-        if: env.INSTALLER == 'yes'
-        run: ./cruelbuild :pack
-
-      - name: Avoid Double Zipping in Installer
-        if: env.INSTALLER == 'yes'
-        run: |
-          mkdir -p installer && cd installer
-          unzip ../CruelKernel.zip
-      
-      - name: Upload Kernel Zip
-        if: env.INSTALLER == 'yes'
-        uses: actions/upload-artifact@v4
-        with:
-          name: CruelKernel-${{ steps.ccache_model_key.outputs.KEY }}
-          path: installer/*
-          if-no-files-found: error
+          sudo apt-get update
+          sudo apt-get install -y -qq libtinfo5 libncurses5 ccache
